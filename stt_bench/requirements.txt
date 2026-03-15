@@ -3,3 +3,4 @@ faster-whisper
 websockets
 grpcio
 grpcio-tools
+google-genai

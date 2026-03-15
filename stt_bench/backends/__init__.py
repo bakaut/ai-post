@@ -8,6 +8,7 @@ from .base import BaseSTTBackend
 _LAZY_EXPORTS = {
     "LocalSTTBackend": ".local_backend",
     "OpenAIRealtimeSTTBackend": ".openai_backend",
+    "GoogleGeminiLiveSTTBackend": ".google_backend",
     "YandexStreamingSTTBackend": ".yandex_backend",
     "ElevenLabsRealtimeSTTBackend": ".elevenlabs_backend",
 }
@@ -16,6 +17,7 @@ __all__ = [
     "BaseSTTBackend",
     "LocalSTTBackend",
     "OpenAIRealtimeSTTBackend",
+    "GoogleGeminiLiveSTTBackend",
     "YandexStreamingSTTBackend",
     "ElevenLabsRealtimeSTTBackend",
 ]

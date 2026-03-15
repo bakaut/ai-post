@@ -56,8 +56,8 @@ class CompareSummary:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the same STT comparison across local/openai/yandex/elevenlabs.")
-    parser.add_argument("--backends", default="local,openai,yandex,elevenlabs")
+    parser = argparse.ArgumentParser(description="Run the same STT comparison across local/openai/google/yandex/elevenlabs.")
+    parser.add_argument("--backends", default="local,openai,google,yandex,elevenlabs")
     parser.add_argument("--device", default="default")
     parser.add_argument("--duration", type=float, default=7.0)
     parser.add_argument("--sample-rate", type=int, default=16000)
@@ -86,6 +86,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--openai-threshold", type=float, default=0.5)
     parser.add_argument("--openai-include-logprobs", action="store_true")
     parser.add_argument("--openai-pricing-per-min-usd", type=float, default=None)
+
+    parser.add_argument("--google-model", default="models/gemini-2.5-flash-native-audio-preview-12-2025")
+    parser.add_argument("--google-api-version", default="v1beta")
+    parser.add_argument("--google-disable-turn-detection", action="store_true")
+    parser.add_argument("--google-silence-duration-ms", type=int, default=500)
+    parser.add_argument("--google-prefix-padding-ms", type=int, default=200)
+    parser.add_argument("--google-pricing-per-min-usd", type=float, default=None)
 
     parser.add_argument("--yandex-endpoint", default=None)
     parser.add_argument("--yandex-language-code", default="ru-RU")
@@ -179,7 +186,7 @@ def make_run_id(prefix: str, backend: str) -> str:
 
 def parse_backends(raw: str) -> list[str]:
     items = [x.strip() for x in raw.split(",") if x.strip()]
-    valid = {"local", "openai", "yandex", "elevenlabs"}
+    valid = {"local", "openai", "google", "yandex", "elevenlabs"}
     bad = [x for x in items if x not in valid]
     if bad:
         raise ValueError(f"Unsupported backends: {', '.join(bad)}")
@@ -360,6 +367,28 @@ def build_backend_and_config(backend_name: str, args: argparse.Namespace, run_id
                 "threshold": args.openai_threshold,
                 "include_logprobs": args.openai_include_logprobs,
                 "pricing_per_min_usd": args.openai_pricing_per_min_usd,
+            },
+        )
+    if backend_name == "google":
+        import os
+        from backends import GoogleGeminiLiveSTTBackend
+
+        return GoogleGeminiLiveSTTBackend(), RunConfig(
+            run_id=run_id,
+            backend="google",
+            language="ru",
+            audio_device=str(args.device),
+            sample_rate_hz=sample_rate_hz,
+            channels=channels,
+            chunk_ms=args.chunk_ms,
+            extra={
+                "api_key": os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"),
+                "model": args.google_model,
+                "api_version": args.google_api_version,
+                "turn_detection_enabled": not args.google_disable_turn_detection,
+                "silence_duration_ms": args.google_silence_duration_ms,
+                "prefix_padding_ms": args.google_prefix_padding_ms,
+                "pricing_per_min_usd": args.google_pricing_per_min_usd,
             },
         )
     if backend_name == "yandex":
