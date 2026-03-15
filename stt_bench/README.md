@@ -1,8 +1,9 @@
 # stt_bench
 
-Минимальный стенд для сравнения 6 STT backend-ов на macOS/Linux/Windows:
+Минимальный стенд для сравнения 7 STT backend-ов на macOS/Linux/Windows:
 
 - local (`faster-whisper`)
+- Deepgram Live Audio (`nova-3`)
 - OpenAI Realtime STT
 - Google Gemini Live API
 - Yandex SpeechKit STT v3 streaming
@@ -25,6 +26,7 @@ stt_bench/
   .env.example
   README.md
   run_local_demo.py
+  run_deepgram_demo.py
   run_openai_demo.py
   run_google_demo.py
   run_yandex_demo.py
@@ -67,6 +69,13 @@ export OPENAI_API_KEY="..."
 python run_openai_demo.py --device default --duration 7
 ```
 
+## Deepgram
+
+```bash
+export DEEPGRAM_API_KEY="..."
+python run_deepgram_demo.py --device default --duration 7
+```
+
 ## Google
 
 ```bash
@@ -102,7 +111,7 @@ python run_speechmatics_demo.py --device default --duration 7
 
 ```bash
 python run_compare.py \
-  --reference-text "Привет, это тест распознавания русской речи для сравнения шести систем." \
+  --reference-text "Привет, это тест распознавания русской речи для сравнения семи систем." \
   --duration 7
 ```
 
@@ -136,6 +145,7 @@ python run_compare.py \
 - Для реально честного сравнения лучше использовать режим `--wav-file`.
 - На macOS терминалу/IDE нужно дать доступ к микрофону.
 - OpenAI backend автоматически ресемплит вход в 24kHz PCM16 mono.
+- Deepgram backend по умолчанию использует `nova-3`, `interim_results=true`, `punctuate=true` и `endpointing=300`.
 - Google backend использует Gemini Live API и ожидает `GEMINI_API_KEY` или `GOOGLE_API_KEY`.
 - ElevenLabs backend лучше всего чувствует себя на `pcm_16000`.
 - Speechmatics backend по умолчанию подключается к `wss://eu2.rt.speechmatics.com/v2`; при необходимости можно переопределить через `SPEECHMATICS_RT_URL`.

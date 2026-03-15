@@ -1,0 +1,5 @@
+---
+creation_rules:
+- path_regex: .*\.sops\.*
+  pgp: >-
+    201BF3CD9CBD8E1E807F5F46F3B6389D4F0EE909

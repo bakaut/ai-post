@@ -56,8 +56,8 @@ class CompareSummary:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the same STT comparison across local/openai/google/yandex/elevenlabs/speechmatics.")
-    parser.add_argument("--backends", default="local,openai,google,yandex,elevenlabs,speechmatics")
+    parser = argparse.ArgumentParser(description="Run the same STT comparison across local/deepgram/openai/google/yandex/elevenlabs/speechmatics.")
+    parser.add_argument("--backends", default="local,deepgram,openai,google,yandex,elevenlabs,speechmatics")
     parser.add_argument("--device", default="default")
     parser.add_argument("--duration", type=float, default=7.0)
     parser.add_argument("--sample-rate", type=int, default=16000)
@@ -86,6 +86,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--openai-threshold", type=float, default=0.5)
     parser.add_argument("--openai-include-logprobs", action="store_true")
     parser.add_argument("--openai-pricing-per-min-usd", type=float, default=None)
+
+    parser.add_argument("--deepgram-model", default="nova-3")
+    parser.add_argument("--deepgram-language", default="ru")
+    parser.add_argument("--deepgram-endpointing-ms", type=int, default=300)
+    parser.add_argument("--deepgram-utterance-end-ms", default=None)
+    parser.add_argument("--deepgram-disable-interim-results", action="store_true")
+    parser.add_argument("--deepgram-disable-punctuate", action="store_true")
+    parser.add_argument("--deepgram-disable-smart-format", action="store_true")
+    parser.add_argument("--deepgram-disable-vad-events", action="store_true")
+    parser.add_argument("--deepgram-diarize", action="store_true")
+    parser.add_argument("--deepgram-pricing-per-min-usd", type=float, default=None)
 
     parser.add_argument("--google-model", default="models/gemini-2.5-flash-native-audio-preview-12-2025")
     parser.add_argument("--google-api-version", default="v1beta")
@@ -196,7 +207,7 @@ def make_run_id(prefix: str, backend: str) -> str:
 
 def parse_backends(raw: str) -> list[str]:
     items = [x.strip() for x in raw.split(",") if x.strip()]
-    valid = {"local", "openai", "google", "yandex", "elevenlabs", "speechmatics"}
+    valid = {"local", "deepgram", "openai", "google", "yandex", "elevenlabs", "speechmatics"}
     bad = [x for x in items if x not in valid]
     if bad:
         raise ValueError(f"Unsupported backends: {', '.join(bad)}")
@@ -377,6 +388,32 @@ def build_backend_and_config(backend_name: str, args: argparse.Namespace, run_id
                 "threshold": args.openai_threshold,
                 "include_logprobs": args.openai_include_logprobs,
                 "pricing_per_min_usd": args.openai_pricing_per_min_usd,
+            },
+        )
+    if backend_name == "deepgram":
+        import os
+        from backends import DeepgramRealtimeSTTBackend
+
+        return DeepgramRealtimeSTTBackend(), RunConfig(
+            run_id=run_id,
+            backend="deepgram",
+            language=args.deepgram_language,
+            audio_device=str(args.device),
+            sample_rate_hz=sample_rate_hz,
+            channels=channels,
+            chunk_ms=args.chunk_ms,
+            extra={
+                "api_key": os.environ.get("DEEPGRAM_API_KEY"),
+                "model": args.deepgram_model,
+                "language": args.deepgram_language,
+                "endpointing_ms": args.deepgram_endpointing_ms,
+                "utterance_end_ms": args.deepgram_utterance_end_ms,
+                "interim_results": not args.deepgram_disable_interim_results,
+                "punctuate": not args.deepgram_disable_punctuate,
+                "smart_format": not args.deepgram_disable_smart_format,
+                "vad_events": not args.deepgram_disable_vad_events,
+                "diarize": args.deepgram_diarize,
+                "pricing_per_min_usd": args.deepgram_pricing_per_min_usd,
             },
         )
     if backend_name == "google":
