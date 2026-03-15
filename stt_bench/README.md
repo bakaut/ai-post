@@ -37,10 +37,12 @@ stt_bench/
 ## Установка
 
 ```bash
-python3 -m venv .venv
+uv venv
 source .venv/bin/activate
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
+
+Все entrypoint-скрипты также умеют сами создать `.venv` и поставить `requirements.txt`, если запускать их вне виртуального окружения и `uv` уже установлен.
 
 ## Посмотреть микрофоны
 

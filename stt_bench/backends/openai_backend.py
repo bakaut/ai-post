@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import audioop
 import base64
 import json
 import os
+from array import array
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -23,11 +23,12 @@ class OpenAIRealtimeSTTBackend(BaseSTTBackend):
         self._recv_task: asyncio.Task | None = None
         self._session_updated = asyncio.Event()
         self._api_key: str | None = None
-        self._ratecv_state = None
+        self._ratecv_state: tuple[int, float] | None = None
         self._item_started_ms: dict[str, int] = {}
         self._item_audio_sec: dict[str, float] = {}
         self._item_partial_text: dict[str, str] = {}
         self._item_partial_index: dict[str, int] = {}
+        self._item_done_events: dict[str, asyncio.Event] = {}
         self._session_started_ms: int | None = None
         self._include_logprobs = False
 
@@ -100,6 +101,7 @@ class OpenAIRealtimeSTTBackend(BaseSTTBackend):
     async def _on_finish_audio(self) -> None:
         if self._ws is not None:
             await self._send_json({"type": "input_audio_buffer.commit"})
+            await self._wait_for_pending_items()
 
     async def _on_stop(self) -> None:
         if self._recv_task is not None:
@@ -110,6 +112,7 @@ class OpenAIRealtimeSTTBackend(BaseSTTBackend):
                 pass
             finally:
                 self._recv_task = None
+        await self._flush_pending_items_as_finals(reason="stop")
         if self._ws is not None:
             try:
                 await self._ws.close()
@@ -203,6 +206,7 @@ class OpenAIRealtimeSTTBackend(BaseSTTBackend):
                 self._item_started_ms[item_id] = self.now_monotonic_ms()
                 self._item_partial_text.setdefault(item_id, "")
                 self._item_partial_index.setdefault(item_id, 0)
+                self._item_done_events.setdefault(item_id, asyncio.Event())
             return
         if event_type == "input_audio_buffer.speech_stopped":
             item_id = event.get("item_id")
@@ -237,7 +241,7 @@ class OpenAIRealtimeSTTBackend(BaseSTTBackend):
             return
         if event_type == "conversation.item.input_audio_transcription.completed":
             item_id = event.get("item_id") or self.make_segment_id()
-            transcript = (event.get("transcript") or "").strip()
+            transcript = ((event.get("transcript") or "").strip() or self._item_partial_text.get(item_id, "").strip())
             start_ms = self._item_started_ms.get(item_id, self._session_started_ms or self.now_monotonic_ms())
             usage = event.get("usage", {}) or {}
             audio_sec = self._extract_audio_seconds(usage)
@@ -256,6 +260,7 @@ class OpenAIRealtimeSTTBackend(BaseSTTBackend):
                 provider_event_type=event_type,
                 raw_meta=event,
             )
+            self._mark_item_done(item_id)
             return
         if event_type == "conversation.item.input_audio_transcription.failed":
             item_id = event.get("item_id") or self.make_segment_id()
@@ -266,7 +271,71 @@ class OpenAIRealtimeSTTBackend(BaseSTTBackend):
                 started_at_monotonic_ms=self._item_started_ms.get(item_id, self._session_started_ms or self.now_monotonic_ms()),
                 raw_meta=event,
             )
+            self._mark_item_done(item_id)
             return
+
+    def _mark_item_done(self, item_id: str) -> None:
+        self._item_done_events.setdefault(item_id, asyncio.Event()).set()
+
+    def _pending_item_ids(self) -> list[str]:
+        known_item_ids = set(self._item_started_ms) | set(self._item_partial_text) | set(self._item_done_events)
+        return [
+            item_id
+            for item_id in known_item_ids
+            if not (self._item_done_events.get(item_id) and self._item_done_events[item_id].is_set())
+        ]
+
+    async def _wait_for_pending_items(self) -> None:
+        pending = self._pending_item_ids()
+        if not pending:
+            return
+
+        timeout_sec = 10.0
+        if self.config is not None:
+            try:
+                timeout_sec = float(self.config.extra.get("finalize_timeout_sec", timeout_sec))
+            except (TypeError, ValueError):
+                timeout_sec = 10.0
+        if timeout_sec <= 0:
+            return
+
+        wait_tasks = [
+            asyncio.create_task(self._item_done_events.setdefault(item_id, asyncio.Event()).wait())
+            for item_id in pending
+        ]
+        try:
+            await asyncio.wait_for(asyncio.gather(*wait_tasks), timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            await self._flush_pending_items_as_finals(reason="finish_audio_timeout")
+        finally:
+            for task in wait_tasks:
+                task.cancel()
+            for task in wait_tasks:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+    async def _flush_pending_items_as_finals(self, *, reason: str) -> None:
+        for item_id in self._pending_item_ids():
+            text = self._item_partial_text.get(item_id, "").strip()
+            if not text:
+                self._mark_item_done(item_id)
+                continue
+
+            start_ms = self._item_started_ms.get(item_id, self._session_started_ms or self.now_monotonic_ms())
+            audio_sec = self._item_audio_sec.get(item_id, 0.0)
+            await self.emit_final(
+                segment_id=item_id,
+                text=text,
+                started_at_monotonic_ms=start_ms,
+                audio_sec=audio_sec,
+                language=self.config.language if self.config else None,
+                cost_estimate_usd=self._estimate_cost_usd(audio_sec),
+                provider_event_type="conversation.item.input_audio_transcription.completed_fallback",
+                raw_meta={"fallback_reason": reason},
+            )
+            self._mark_item_done(item_id)
 
     def _normalize_input_pcm_to_24k_mono_le(self, pcm_chunk: bytes, config: RunConfig) -> bytes:
         if config.channels != 1:
@@ -275,10 +344,45 @@ class OpenAIRealtimeSTTBackend(BaseSTTBackend):
             return pcm_chunk
         if config.sample_rate_hz <= 0:
             raise ValueError(f"Invalid input sample rate: {config.sample_rate_hz}")
-        resampled, self._ratecv_state = audioop.ratecv(
-            pcm_chunk, 2, 1, config.sample_rate_hz, 24000, self._ratecv_state
+        return self._resample_pcm16_mono(
+            pcm_chunk,
+            input_rate_hz=config.sample_rate_hz,
+            output_rate_hz=24000,
         )
-        return resampled
+
+    def _resample_pcm16_mono(self, pcm_chunk: bytes, *, input_rate_hz: int, output_rate_hz: int) -> bytes:
+        if len(pcm_chunk) % 2 != 0:
+            raise ValueError("Expected PCM16 audio with an even byte length")
+
+        samples = array("h")
+        samples.frombytes(pcm_chunk)
+
+        prev_sample, position = self._ratecv_state or (None, 0.0)
+        if prev_sample is None:
+            extended = [int(sample) for sample in samples]
+        else:
+            extended = [prev_sample, *[int(sample) for sample in samples]]
+
+        if len(extended) < 2:
+            if extended:
+                self._ratecv_state = (extended[-1], position)
+            return b""
+
+        step = input_rate_hz / output_rate_hz
+        max_index = len(extended) - 1
+        output = array("h")
+
+        while position < max_index:
+            left_index = int(position)
+            fraction = position - left_index
+            left = extended[left_index]
+            right = extended[left_index + 1]
+            sample = int(round(left + (right - left) * fraction))
+            output.append(max(-32768, min(32767, sample)))
+            position += step
+
+        self._ratecv_state = (extended[-1], position - max_index)
+        return output.tobytes()
 
     def _extract_avg_logprob(self, logprobs: Any) -> float | None:
         if not logprobs or not isinstance(logprobs, list):

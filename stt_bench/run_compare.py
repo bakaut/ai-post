@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from uv_bootstrap import ensure_uv_venv
+
+ensure_uv_venv(__file__)
+
 import argparse
 import asyncio
 import contextlib
@@ -8,17 +19,11 @@ import json
 import re
 import signal
 import statistics
-import sys
 import time
 import wave
 from dataclasses import asdict, dataclass
-from pathlib import Path
 from typing import Any
 
-from backends.elevenlabs_backend import ElevenLabsRealtimeSTTBackend
-from backends.local_backend import LocalSTTBackend
-from backends.openai_backend import OpenAIRealtimeSTTBackend
-from backends.yandex_backend import YandexStreamingSTTBackend
 from common.audio_capture import MicrophoneAudioSource
 from common.result_writer import ResultWriter, format_console_line
 from common.types import RunConfig, TranscriptEvent
@@ -314,6 +319,8 @@ def print_compare_table(summaries: list[CompareSummary]) -> None:
 def build_backend_and_config(backend_name: str, args: argparse.Namespace, run_id: str, sample_rate_hz: int,
                              channels: int) -> tuple[Any, RunConfig]:
     if backend_name == "local":
+        from backends import LocalSTTBackend
+
         return LocalSTTBackend(), RunConfig(
             run_id=run_id,
             backend="local",
@@ -331,6 +338,8 @@ def build_backend_and_config(backend_name: str, args: argparse.Namespace, run_id
             },
         )
     if backend_name == "openai":
+        from backends import OpenAIRealtimeSTTBackend
+
         return OpenAIRealtimeSTTBackend(), RunConfig(
             run_id=run_id,
             backend="openai",
@@ -355,6 +364,8 @@ def build_backend_and_config(backend_name: str, args: argparse.Namespace, run_id
         )
     if backend_name == "yandex":
         import os
+        from backends import YandexStreamingSTTBackend
+
         return YandexStreamingSTTBackend(), RunConfig(
             run_id=run_id,
             backend="yandex",
@@ -377,6 +388,8 @@ def build_backend_and_config(backend_name: str, args: argparse.Namespace, run_id
         )
     if backend_name == "elevenlabs":
         import os
+        from backends import ElevenLabsRealtimeSTTBackend
+
         return ElevenLabsRealtimeSTTBackend(), RunConfig(
             run_id=run_id,
             backend="elevenlabs",

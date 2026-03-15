@@ -1,15 +1,28 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
 import queue
+import sys
 import threading
+from pathlib import Path
 from typing import Any
 
 import grpc
 
 from backends.base import BaseSTTBackend
 from common.types import BackendCapabilities, RunConfig
+
+from google.protobuf import json_format
+from google.protobuf import struct_pb2
+
+
+def _ensure_local_yandex_stubs_on_path() -> None:
+    backends_dir = Path(__file__).resolve().parent
+    backends_dir_str = str(backends_dir)
+    if backends_dir_str not in sys.path:
+        sys.path.insert(0, backends_dir_str)
 
 
 class YandexStreamingSTTBackend(BaseSTTBackend):
@@ -108,12 +121,13 @@ class YandexStreamingSTTBackend(BaseSTTBackend):
 
     def _import_generated_stubs(self) -> None:
         try:
-            import yandex.cloud.ai.stt.v3.stt_pb2 as stt_pb2
-            import yandex.cloud.ai.stt.v3.stt_service_pb2_grpc as stt_service_pb2_grpc
+            _ensure_local_yandex_stubs_on_path()
+            stt_pb2 = importlib.import_module("yandex.cloud.ai.stt.v3.stt_pb2")
+            stt_service_pb2_grpc = importlib.import_module("yandex.cloud.ai.stt.v3.stt_service_pb2_grpc")
         except ImportError as e:
             raise RuntimeError(
-                "Yandex SpeechKit gRPC stubs are not available. Expected imports: "
-                "yandex.cloud.ai.stt.v3.stt_pb2 and stt_service_pb2_grpc"
+                "Yandex SpeechKit gRPC stubs are not available. Expected vendored modules under "
+                "backends/yandex/cloud/ai/stt/v3 or an importable yandex.cloud.ai.stt.v3 package."
             ) from e
         self._stt_pb2 = stt_pb2
         self._stt_service_pb2_grpc = stt_service_pb2_grpc

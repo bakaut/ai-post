@@ -1,0 +1,1 @@
+Forbiden to read any file in .gitignore
