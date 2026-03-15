@@ -56,8 +56,8 @@ class CompareSummary:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the same STT comparison across local/openai/google/yandex/elevenlabs.")
-    parser.add_argument("--backends", default="local,openai,google,yandex,elevenlabs")
+    parser = argparse.ArgumentParser(description="Run the same STT comparison across local/openai/google/yandex/elevenlabs/speechmatics.")
+    parser.add_argument("--backends", default="local,openai,google,yandex,elevenlabs,speechmatics")
     parser.add_argument("--device", default="default")
     parser.add_argument("--duration", type=float, default=7.0)
     parser.add_argument("--sample-rate", type=int, default=16000)
@@ -114,6 +114,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--elevenlabs-disable-logging", action="store_true")
     parser.add_argument("--elevenlabs-previous-text", default=None)
     parser.add_argument("--elevenlabs-pricing-per-min-usd", type=float, default=None)
+
+    parser.add_argument("--speechmatics-rt-url", default=None)
+    parser.add_argument("--speechmatics-language", default="ru")
+    parser.add_argument("--speechmatics-operating-point", default="enhanced")
+    parser.add_argument("--speechmatics-max-delay", type=float, default=1.0)
+    parser.add_argument("--speechmatics-disable-partials", action="store_true")
+    parser.add_argument("--speechmatics-enable-entities", action="store_true")
+    parser.add_argument("--speechmatics-diarization", default="none")
+    parser.add_argument("--speechmatics-pricing-per-min-usd", type=float, default=None)
+    parser.add_argument("--speechmatics-finish-timeout-sec", type=float, default=15.0)
     return parser.parse_args()
 
 
@@ -186,7 +196,7 @@ def make_run_id(prefix: str, backend: str) -> str:
 
 def parse_backends(raw: str) -> list[str]:
     items = [x.strip() for x in raw.split(",") if x.strip()]
-    valid = {"local", "openai", "google", "yandex", "elevenlabs"}
+    valid = {"local", "openai", "google", "yandex", "elevenlabs", "speechmatics"}
     bad = [x for x in items if x not in valid]
     if bad:
         raise ValueError(f"Unsupported backends: {', '.join(bad)}")
@@ -442,6 +452,32 @@ def build_backend_and_config(backend_name: str, args: argparse.Namespace, run_id
                 "min_silence_duration_ms": args.elevenlabs_min_silence_duration_ms,
                 "previous_text": args.elevenlabs_previous_text,
                 "pricing_per_min_usd": args.elevenlabs_pricing_per_min_usd,
+            },
+        )
+    if backend_name == "speechmatics":
+        import os
+        from backends import SpeechmaticsRealtimeSTTBackend
+
+        return SpeechmaticsRealtimeSTTBackend(), RunConfig(
+            run_id=run_id,
+            backend="speechmatics",
+            language=args.speechmatics_language,
+            audio_device=str(args.device),
+            sample_rate_hz=sample_rate_hz,
+            channels=channels,
+            chunk_ms=args.chunk_ms,
+            extra={
+                "auth_token": os.environ.get("SPEECHMATICS_AUTH_TOKEN"),
+                "api_key": os.environ.get("SPEECHMATICS_API_KEY"),
+                "url": args.speechmatics_rt_url or os.environ.get("SPEECHMATICS_RT_URL"),
+                "language": args.speechmatics_language,
+                "operating_point": args.speechmatics_operating_point,
+                "enable_partials": not args.speechmatics_disable_partials,
+                "max_delay": args.speechmatics_max_delay,
+                "enable_entities": args.speechmatics_enable_entities,
+                "diarization": args.speechmatics_diarization,
+                "pricing_per_min_usd": args.speechmatics_pricing_per_min_usd,
+                "finish_timeout_sec": args.speechmatics_finish_timeout_sec,
             },
         )
     raise ValueError(f"Unsupported backend: {backend_name}")

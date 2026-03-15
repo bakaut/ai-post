@@ -1,12 +1,13 @@
 # stt_bench
 
-Минимальный стенд для сравнения 5 STT backend-ов на macOS/Linux/Windows:
+Минимальный стенд для сравнения 6 STT backend-ов на macOS/Linux/Windows:
 
 - local (`faster-whisper`)
 - OpenAI Realtime STT
 - Google Gemini Live API
 - Yandex SpeechKit STT v3 streaming
 - ElevenLabs Realtime STT
+- Speechmatics Realtime STT
 
 ## Что умеет
 
@@ -28,6 +29,7 @@ stt_bench/
   run_google_demo.py
   run_yandex_demo.py
   run_elevenlabs_demo.py
+  run_speechmatics_demo.py
   run_compare.py
 
   common/
@@ -87,13 +89,20 @@ export ELEVENLABS_API_KEY="..."
 python run_elevenlabs_demo.py --device default --duration 7
 ```
 
+## Speechmatics
+
+```bash
+export SPEECHMATICS_API_KEY="..."
+python run_speechmatics_demo.py --device default --duration 7
+```
+
 ## Сравнение
 
 Через микрофон:
 
 ```bash
 python run_compare.py \
-  --reference-text "Привет, это тест распознавания русской речи для сравнения пяти систем." \
+  --reference-text "Привет, это тест распознавания русской речи для сравнения шести систем." \
   --duration 7
 ```
 
@@ -129,3 +138,4 @@ python run_compare.py \
 - OpenAI backend автоматически ресемплит вход в 24kHz PCM16 mono.
 - Google backend использует Gemini Live API и ожидает `GEMINI_API_KEY` или `GOOGLE_API_KEY`.
 - ElevenLabs backend лучше всего чувствует себя на `pcm_16000`.
+- Speechmatics backend по умолчанию подключается к `wss://eu2.rt.speechmatics.com/v2`; при необходимости можно переопределить через `SPEECHMATICS_RT_URL`.

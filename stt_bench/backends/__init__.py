@@ -11,6 +11,7 @@ _LAZY_EXPORTS = {
     "GoogleGeminiLiveSTTBackend": ".google_backend",
     "YandexStreamingSTTBackend": ".yandex_backend",
     "ElevenLabsRealtimeSTTBackend": ".elevenlabs_backend",
+    "SpeechmaticsRealtimeSTTBackend": ".speechmatics_backend",
 }
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "GoogleGeminiLiveSTTBackend",
     "YandexStreamingSTTBackend",
     "ElevenLabsRealtimeSTTBackend",
+    "SpeechmaticsRealtimeSTTBackend",
 ]
 
 
